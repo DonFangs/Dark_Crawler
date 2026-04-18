@@ -1,14 +1,13 @@
+from typing import Dict, List, Optional, Tuple
 from urllib.parse import urljoin, urlparse
+
 from bs4 import BeautifulSoup
 
-class Parser:
-    """
-    Responsible for extracting metadata from HTML:
-    - title
-    - links
-    """
 
-    def extract_title(self, html: str) -> str | None:
+class Parser:
+    """Responsible for extracting metadata from HTML."""
+
+    def extract_title(self, html: str) -> Optional[str]:
         try:
             soup = BeautifulSoup(html, "html.parser")
             if soup.title and soup.title.string:
@@ -17,17 +16,19 @@ class Parser:
             pass
         return None
 
-    def extract_links(self, html: str, base_url: str) -> list[str]:
-        links: list[str] = []
+    def extract_links(self, html: str, base_url: str) -> List[Tuple[str, str]]:
+        """Extract unique links and their anchor text from HTML."""
+        results: Dict[str, str] = {}
         try:
             soup = BeautifulSoup(html, "html.parser")
-            for a in soup.find_all("a", href=True):
-                href = a["href"].strip()
+            for anchor in soup.find_all("a", href=True):
+                href = anchor["href"].strip()
                 absolute = urljoin(base_url, href)
-                # Normalize: only keep http/https for v0.1
                 parsed = urlparse(absolute)
-                if parsed.scheme in ("http", "https"):
-                    links.append(absolute)
+                if parsed.scheme not in ("http", "https"):
+                    continue
+                anchor_text = " ".join(anchor.stripped_strings).strip()[:500]
+                results.setdefault(absolute, anchor_text)
         except Exception:
             pass
-        return list(set(links))  # dedupe
+        return list(results.items())

@@ -1,0 +1,2 @@
+# Add .onion URLs here, one per line.
+# Example: abcdefghijklmnop.onion
