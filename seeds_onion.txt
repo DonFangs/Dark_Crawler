@@ -1,2 +1,5 @@
 # Add .onion URLs here, one per line.
-# Example: abcdefghijklmnop.onion
+# Example: abcdefghijklmno
+http://darklcdkooakzfpfef2bpo2yzjgeh3csdxgv6usiw223s7ay2ghdgnad.onion/
+http://darkfailenbsdla5mal2mxn2uz66od5vtzd5vtzd5qozslagrfzachha3f3id.onion
+http://oniodtu6xudkiblcijrwwkduu2tdle3rav7nlszrjhrxpjtkg4brmgqd.onion

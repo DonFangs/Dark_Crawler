@@ -2,143 +2,187 @@ from crawler.logger import setup_logging
 
 import argparse
 import logging
+import signal
+import sys
+import threading
+from datetime import datetime, UTC
 from pathlib import Path
 from typing import List, Optional
 
 from crawler.crawler import Crawler
 from database.db import Database
-from network.transport_clearweb import ClearWebTransport
 from network.transport_darkweb import DarkWebTransport
 
 
-def load_seed_urls(path: Optional[str]) -> List[str]:
-    """Load seed URLs from a file, ignoring comments and blank lines."""
-    if not path:
-        return []
+def load_seed_urls(path: str) -> List[str]:
+    """Load seed URLs from a file, ignoring comments and blank lines.
+    
+    Args:
+        path: Path to seed file.
+        
+    Returns:
+        List of seed URLs.
+        
+    Raises:
+        FileNotFoundError: If seed file does not exist.
+        ValueError: If any seed URL is not a .onion address.
+    """
     seeds_path = Path(path)
     if not seeds_path.exists():
         raise FileNotFoundError(f"Seed file not found: {path}")
 
-    with seeds_path.open("r", encoding="utf-8") as handle:
-        return [
-            line.strip()
-            for line in handle
-            if line.strip() and not line.strip().startswith("#")
-        ]
+    urls = [
+        line.strip()
+        for line in seeds_path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    
+    for url in urls:
+        if not url.endswith(".onion") and ".onion" not in url:
+            raise ValueError(f"Invalid seed URL (not .onion): {url}")
+    
+    return urls
 
 
 def parse_args() -> argparse.ArgumentParser:
+    """Parse command-line arguments.
+    
+    Returns:
+        Configured argument parser.
+    """
     parser = argparse.ArgumentParser(
-        description="Dark Crawler v0.2: passive metadata-only crawler for link mapping"
-    )
-    parser.add_argument(
-        "--transport",
-        choices=["tor", "clearweb"],
-        default="clearweb",
-        help="Transport mode for crawling",
+        description="Dark Crawler v0.2: Tor-only passive metadata crawler for .onion link mapping"
     )
     parser.add_argument(
         "--seeds",
-        help="Path to a text file containing one seed URL per line",
+        required=True,
+        help="Path to a text file containing one .onion seed URL per line",
     )
     parser.add_argument(
         "--max-depth",
         type=int,
         default=3,
-        help="Maximum crawl depth",
+        help="Maximum crawl depth (default: 3)",
     )
     parser.add_argument(
         "--max-pages",
         type=int,
         default=1000,
-        help="Maximum number of pages to fetch",
+        help="Maximum number of pages to fetch (default: 1000)",
     )
     parser.add_argument(
         "--delay",
         type=float,
         default=2.0,
-        help="Seconds to wait between requests",
+        help="Seconds to wait between requests (default: 2.0)",
     )
     parser.add_argument(
         "--db-path",
         default="dark_crawler.db",
-        help="SQLite database file path",
-    )
-    parser.add_argument(
-        "--domain-scope",
-        choices=["onion_only", "clearweb_only", "any"],
-        help="Domain scope filter for discovered URLs",
+        help="SQLite database file path (default: dark_crawler.db)",
     )
     parser.add_argument(
         "--log-level",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         default="INFO",
-        help="Logging level",
+        help="Logging level (default: INFO)",
     )
     parser.add_argument(
         "--log-file",
         help="Optional path to write log output",
     )
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument(
+    parser.add_argument(
         "--respect-robots",
-        dest="respect_robots",
         action="store_true",
-        help="Respect robots.txt when crawling",
+        default=False,
+        help="Respect robots.txt when crawling (default: False, as .onion sites rarely have it)",
     )
-    group.add_argument(
-        "--no-respect-robots",
-        dest="respect_robots",
-        action="store_false",
-        help="Ignore robots.txt when crawling",
-    )
-    parser.set_defaults(respect_robots=None)
     return parser
 
 
 def main() -> None:
+    """Main entry point for the crawler."""
     parser = parse_args()
     args = parser.parse_args()
 
     setup_logging(args.log_level, args.log_file)
     logger = logging.getLogger(__name__)
 
-    if args.transport == "tor" and not args.seeds:
-        parser.error(
-            "You must provide a seeds file with .onion URLs when using Tor transport. Example: --seeds my_seeds.txt"
-        )
-
     try:
         seed_urls = load_seed_urls(args.seeds)
-    except FileNotFoundError as exc:
-        parser.error(str(exc))
-        return
+    except (FileNotFoundError, ValueError) as exc:
+        logger.error(str(exc))
+        sys.exit(1)
+    
+    if not seed_urls:
+        logger.error("No seed URLs loaded from %s", args.seeds)
+        sys.exit(1)
 
-    domain_scope = args.domain_scope
-    if domain_scope is None:
-        domain_scope = "onion_only" if args.transport == "tor" else "clearweb_only"
-
-    respect_robots = args.respect_robots
-    if respect_robots is None:
-        respect_robots = args.transport == "clearweb"
+    logger.info("Loaded %d seed URLs from %s", len(seed_urls), args.seeds)
 
     db = Database(args.db_path)
     db.init_schema()
 
-    transport = (
-        DarkWebTransport() if args.transport == "tor" else ClearWebTransport()
-    )
+    transport = DarkWebTransport()
+    
+    shutdown_event = threading.Event()
+    
+    def signal_handler(signum: int, frame: object) -> None:
+        """Handle SIGINT and SIGTERM for graceful shutdown."""
+        logger.info("Shutdown signal received (signal %d), finishing current page...", signum)
+        shutdown_event.set()
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
 
     crawler = Crawler(
         db=db,
         transport=transport,
         max_depth=args.max_depth,
         max_pages=args.max_pages,
-        domain_scope=domain_scope,
         delay_seconds=args.delay,
-        respect_robots=respect_robots,
+        respect_robots=args.respect_robots,
+        shutdown_event=shutdown_event,
     )
-    crawler.crawl(seed_urls)
+    
+    start_time = datetime.now(UTC)
+    session_id = crawler.crawl(seed_urls)
+    end_time = datetime.now(UTC)
+    
+    if session_id is not None:
+        duration = end_time - start_time
+        minutes = int(duration.total_seconds() // 60)
+        seconds = int(duration.total_seconds() % 60)
+        
+        try:
+            stats = db.get_domain_stats()
+            import os
+            db_size_mb = os.path.getsize(args.db_path) / (1024 * 1024)
+        except Exception:
+            stats = {}
+            db_size_mb = 0.0
+        
+        logger.info(
+            "\n===== CRAWL SESSION COMPLETE =====\n"
+            "Session ID: %s\n"
+            "Duration: %dm %ds\n"
+            "Pages crawled: %d\n"
+            "Pages failed: %d\n"
+            "Links discovered: %d\n"
+            "New domains found: %d\n"
+            "Total domains: %d\n"
+            "Database size: %.2f MB\n"
+            "==================================",
+            session_id,
+            minutes,
+            seconds,
+            crawler.pages_fetched,
+            0,
+            0,
+            stats.get("total_domains", 0),
+            stats.get("total_domains", 0),
+            db_size_mb,
+        )
 
 
 if __name__ == "__main__":

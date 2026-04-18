@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS pages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     domain_id INTEGER NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
     url TEXT NOT NULL UNIQUE,
+    final_url TEXT,
     path TEXT,
     title TEXT,
     status TEXT NOT NULL DEFAULT 'pending',
@@ -48,6 +49,7 @@ CREATE TABLE IF NOT EXISTS links (
     to_page_id INTEGER NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
     anchor_text TEXT,
     discovered_at TIMESTAMP NOT NULL,
+    discovered_at_depth INTEGER,
     session_id INTEGER REFERENCES crawl_sessions(id),
     UNIQUE(from_page_id, to_page_id)
 );

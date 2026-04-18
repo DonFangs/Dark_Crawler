@@ -1,63 +1,71 @@
-# v0.1 Crawler Architecture
+# Dark Crawler Architecture
 
 ## Overview
 
-This project is a **clear‑web, metadata‑only crawler** designed to be:
+This project is a **Tor-only, metadata-only crawler** for .onion networks.
 
-- slow
-- safe
-- SQL‑backed
-- modular
-- easy to extend
-
-The core idea: the crawler logic is **network‑agnostic**. Only the
-transport layer knows how to fetch pages.
+Design principles:
+- **Tor-exclusive**: All access through .onion addresses only
+- **Metadata focus**: Stores links, titles, and domain graph (no content)
+- **Rate-limited**: Per-domain delays to avoid server overload
+- **Safe**: CAPTCHA detection, HTML sanity checks, graceful shutdown
+- **SQL-backed**: SQLite3 with Write-Ahead Logging for concurrent access
+- **Modular**: Transport layer abstraction, reusable components
 
 ## Components
 
 - `main.py`
-  - Orchestrates the crawl.
-  - Wires together database, queue, fetcher, parser, safety, and transport.
+  - CLI entry point with seed URL loading
+  - Verifies Tor connectivity at startup
+  - Sets up signal handlers for graceful shutdown
+  - Logs session summary with statistics
 
 - `database/`
-  - `schema.sql`: defines `sites` and `links` tables.
-  - `db.py`: wrapper around SQLite for:
-    - inserting/updating sites
-    - tracking status
-    - storing links
-    - selecting next unseen URL
+  - `schema.sql`: Domain/page/link graph with session tracking
+  - `db.py`: SQLite abstraction with WAL mode and parameterized queries
+  - `db_manager.py`: Session management and statistics
 
 - `crawler/`
-  - `fetcher.py`: calls the transport to fetch pages, enforces delay and timeout.
-  - `parser.py`: extracts `<title>` and `<a href>` links.
-  - `queue.py`: simple queue using `sites` table (status NULL = unseen).
-  - `safety.py`: basic safety filters and captcha detection.
+  - `fetcher.py`: HTTP requests via transport with retry logic
+  - `parser.py`: HTML link extraction with URL normalization
+  - `queue.py`: Breadth-first queue using database
+  - `safety.py`: HTML sanity, CAPTCHA detection, content type filtering
+  - `crawler.py`: Main crawl coordinator with .onion filtering and rate limiting
 
 - `network/`
-  - `transport_clearweb.py`: clear‑web HTTP transport using `requests`.
-  - `transport_darkweb.py`: dark-web HTTP transport using Tor SOCKS5.
+  - `transport_darkweb.py`: Tor SOCKS5 transport with Content-Type guards
 
 - `docs/`
-  - `architecture.md`: this file.
-  - `safety_model.md`: describes safety assumptions and limits.
-  - `how_to_extend.md`: explains how to extend or modify the crawler.
+  - `architecture.md`: this file
+  - `safety_model.md`: Security assumptions and threat model
+  - `how_to_extend.md`: Extension guide
 
 ## Data Flow
 
-1. `main.py` seeds initial URLs into the queue.
-2. `UrlQueue` asks `Database` for the next unseen URL.
-3. `Fetcher` uses `ClearWebTransport` to fetch the page.
-4. `Safety` checks:
-   - HTML sanity
-   - captcha detection
-5. `Parser` extracts:
-   - title
-   - links
-6. `Database`:
-   - updates site status and title
-   - ensures linked sites exist
-   - stores link relationships
-7. New URLs are added back into the queue.
+1. `main.py` verifies Tor connectivity via check.torproject.org
+2. Seed .onion URLs loaded and validated (must be .onion domain)
+3. `Crawler.crawl()` creates crawl session in database
+4. Main loop:
+   - Check for shutdown signal
+   - Get next uncrawled URL from queue
+   - Apply per-domain rate limit
+   - `Fetcher` retrieves page via Tor SOCKS5
+   - Verify Content-Type is HTML/text
+   - Track redirects and final URL
+   - `Safety` sanity checks (HTML, CAPTCHA detection)
+   - `Parser` extracts links with normalization (fragments removed, params sorted, lowercased)
+   - Filter discovered links: must be .onion addresses
+   - Update database with page metadata and links
+5. On shutdown signal or max pages reached: end session, log summary
+
+## URL Normalization
+
+All URLs normalized for deduplication:
+- Fragments (#) removed
+- Trailing slashes removed (except root /)
+- Scheme and netloc lowercased
+- Query parameters sorted alphabetically
+- Ensures same logical URL always has same storage key
 
 ## Network Abstraction
 

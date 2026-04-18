@@ -65,12 +65,33 @@ class DarkWebTransport:
             ) from exc
 
     def get(self, url: str, timeout: float):
-        """Fetch a URL through Tor with retry support."""
+        """Fetch a URL through Tor with retry support.
+        
+        Args:
+            url: URL to fetch.
+            timeout: Request timeout in seconds.
+            
+        Returns:
+            Response object if successful.
+            
+        Raises:
+            TransportError: If fetch fails after retries or on client errors.
+        """
         backoffs = [2, 4, 8]
         last_exception: Optional[Exception] = None
         for attempt, wait in enumerate(backoffs, start=1):
             try:
                 response = self.session.get(url, timeout=timeout, allow_redirects=True)
+                
+                if response.history:
+                    redirect_chain = " -> ".join([r.url for r in response.history] + [response.url])
+                    self.logger.debug("Redirect chain: %s", redirect_chain)
+                
+                content_type = response.headers.get("Content-Type", "").lower()
+                if not (content_type.startswith("text/html") or content_type.startswith("text/plain")):
+                    self.logger.debug("Skipping non-HTML content: %s", content_type)
+                    return None
+                
                 status = response.status_code
                 if 500 <= status < 600:
                     if attempt < len(backoffs):

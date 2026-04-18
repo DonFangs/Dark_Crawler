@@ -1,15 +1,15 @@
 # Dark Crawler
 
-A passive metadata-only crawler for mapping link relationships across clearweb and .onion domains.
+A Tor-only passive metadata crawler for mapping .onion network topology and link relationships.
 
 ## Description
 
-Dark Crawler is designed to discover page-level relationships without storing page content. It builds a graph of domains, pages, and links while respecting safe crawl boundaries, robots.txt policies, and Tor connectivity for onion crawling.
+Dark Crawler discovers .onion sites and builds a graph of domains, pages, and links without storing page content. It operates exclusively through Tor, automatically following links across the darkweb starting from seed URLs.
 
 ## Installation
 
-1. Create a Python virtual environment.
-2. Install dependencies:
+1. Ensure Tor is running on `127.0.0.1:9050` (SOCKS5 proxy)
+2. Create a Python virtual environment:
 
 ```bash
 python -m venv .venv
@@ -19,45 +19,55 @@ pip install -r requirements.txt
 
 ## Usage
 
-### Clearweb mode
+Start a crawl with seed URLs:
 
 ```bash
-python main.py --transport clearweb --seeds seeds_clearweb.txt --max-depth 3 --max-pages 1000 --delay 2.0 --db-path dark_crawler.db
+python main.py --seeds seeds_onion.txt --max-depth 3 --max-pages 1000 --delay 2.0
 ```
 
-### Tor mode
+### Available Options
+
+- `--seeds FILE` (required): Path to text file with .onion seed URLs
+- `--max-depth N` (default: 3): Maximum crawl depth
+- `--max-pages N` (default: 1000): Maximum pages to fetch
+- `--delay SECONDS` (default: 2.0): Per-domain rate limit
+- `--db-path PATH` (default: dark_crawler.db): SQLite database file
+- `--log-level LEVEL` (default: INFO): DEBUG, INFO, WARNING, or ERROR
+- `--log-file PATH` (optional): Write logs to file
+- `--respect-robots` (default: False): Check robots.txt before crawling
+
+### Example: Crawl with logging
 
 ```bash
-python main.py --transport tor --seeds seeds_onion.txt --max-depth 3 --max-pages 1000 --delay 2.0 --db-path dark_crawler.db
+python main.py --seeds seeds_onion.txt --max-pages 500 --log-file crawler.log --log-level DEBUG
 ```
 
-### Logging
+Graceful shutdown: Press `Ctrl+C` to finish the current page and exit cleanly.
 
-You can write logs to a file:
-
-```bash
-python main.py --log-file crawler.log --log-level DEBUG
-```
-
-## Database schema
+## Database Schema
 
 The crawler stores the graph using:
 
-- `domains`: unique domains, onion metadata, status, and discovery timestamps
-- `pages`: full URLs, HTTP metadata, crawl depth, and crawl history
-- `links`: directed edges between pages with anchor text and discovery time
-- `crawl_sessions`: session metadata and counters for each run
+- `domains`: unique .onion domains with version detection, status, and timestamps
+- `pages`: full URLs, HTTP metadata, content hash, crawl depth, and redirect tracking
+- `links`: directed edges with anchor text and discovery depth
+- `crawl_sessions`: session metadata and statistics for each run
 
-Views are also created for graph analysis such as `domain_in_degree`, `domain_out_degree`, `hub_domains`, `isolated_domains`, and `domain_graph_edges`.
+Includes indexes for efficient graph queries and views for analyzing domain connectivity.
 
-## Safety features
+## Safety Features
 
-- Domain scope filtering: `onion_only`, `clearweb_only`, or `any`
-- Optional robots.txt checking with `--respect-robots`
+- Tor connectivity verification before crawling
+- .onion-only filtering (no clearweb leakage)
 - CAPTCHA detection using structural HTML analysis
-- Tor connectivity verification before darkweb crawling
-- Retry with exponential backoff for transport failures
+- Optional robots.txt checking (default: disabled for .onion)
+- Per-domain rate limiting to avoid server overload
+- Graceful shutdown on interrupt signals
+- Retry logic with exponential backoff on failures
+- Content-Type filtering (HTML/text only)
+- Redirect tracking and final URL recording
 
 ## Disclaimer
 
-This project is for educational and research purposes only. Use it responsibly and always respect site policies and legal restrictions.
+This project is for educational and research purposes only. Unauthorized access to computer networks is illegal. Always ensure you have proper authorization and respect site policies, legal restrictions, and the terms of service.
+

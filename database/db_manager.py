@@ -11,11 +11,19 @@ SCHEMA_FILE = Path(__file__).with_name("schema.sql")
 class Database:
     """Manages the SQLite schema and graph storage for the crawler."""
 
-    def __init__(self, path: str):
+    def __init__(self, path: str) -> None:
+        """Initialize database connection.
+        
+        Args:
+            path: Path to SQLite database file.
+        """
         self.path = path
         self.conn = sqlite3.connect(self.path)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON;")
+        journal_mode = self.conn.execute("PRAGMA journal_mode=WAL").fetchone()[0]
+        import logging
+        logging.getLogger(__name__).debug("SQLite journal mode: %s", journal_mode)
 
     def init_schema(self) -> None:
         """Initialize the database schema and warn if an old schema exists."""
@@ -116,13 +124,22 @@ class Database:
         to_page_id: int,
         anchor_text: Optional[str] = None,
         session_id: Optional[int] = None,
+        discovered_at_depth: Optional[int] = None,
     ) -> None:
-        """Create a unique directed link between two pages."""
+        """Create a unique directed link between two pages.
+        
+        Args:
+            from_page_id: Source page ID.
+            to_page_id: Target page ID.
+            anchor_text: Visible anchor text (optional).
+            session_id: Crawl session ID (optional).
+            discovered_at_depth: Crawl depth where link was discovered (optional).
+        """
         discovered_at = datetime.now(UTC).isoformat()
         anchor_text = anchor_text.strip()[:500] if anchor_text else None
         self.conn.execute(
-            "INSERT OR IGNORE INTO links (from_page_id, to_page_id, anchor_text, discovered_at, session_id) VALUES (?, ?, ?, ?, ?)",
-            (from_page_id, to_page_id, anchor_text, discovered_at, session_id),
+            "INSERT OR IGNORE INTO links (from_page_id, to_page_id, anchor_text, discovered_at, session_id, discovered_at_depth) VALUES (?, ?, ?, ?, ?, ?)",
+            (from_page_id, to_page_id, anchor_text, discovered_at, session_id, discovered_at_depth),
         )
         self.conn.commit()
 
@@ -161,12 +178,24 @@ class Database:
         page_size: Optional[int] = None,
         server_header: Optional[str] = None,
         title: Optional[str] = None,
+        final_url: Optional[str] = None,
     ) -> None:
-        """Update a page record after an attempted crawl."""
+        """Update a page record after an attempted crawl.
+        
+        Args:
+            page_id: Page ID to update.
+            status: New page status.
+            http_code: HTTP response code (optional).
+            content_hash: SHA-256 hash of content (optional).
+            page_size: Response body size (optional).
+            server_header: Server header value (optional).
+            title: Page title (optional).
+            final_url: Final URL after redirects (optional).
+        """
         last_crawled = datetime.now(UTC).isoformat()
         self.conn.execute(
-            "UPDATE pages SET status = ?, http_status_code = ?, content_hash = ?, page_size_bytes = ?, server_header = ?, title = ?, last_crawled = ?, crawl_count = crawl_count + 1 WHERE id = ?",
-            (status, http_code, content_hash, page_size, server_header, title, last_crawled, page_id),
+            "UPDATE pages SET status = ?, http_status_code = ?, content_hash = ?, page_size_bytes = ?, server_header = ?, title = ?, final_url = ?, last_crawled = ?, crawl_count = crawl_count + 1 WHERE id = ?",
+            (status, http_code, content_hash, page_size, server_header, title, final_url, last_crawled, page_id),
         )
         self.conn.commit()
 
@@ -192,9 +221,6 @@ class Database:
         ).fetchone()[0]
         stats["onion_count"] = self.conn.execute(
             "SELECT COUNT(*) FROM domains WHERE is_onion = 1"
-        ).fetchone()[0]
-        stats["clearweb_count"] = self.conn.execute(
-            "SELECT COUNT(*) FROM domains WHERE is_onion = 0"
         ).fetchone()[0]
         return stats
 
