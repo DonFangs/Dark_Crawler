@@ -58,7 +58,7 @@ Includes indexes for efficient graph queries and views for analyzing domain conn
 ## Safety Features
 
 - Tor connectivity verification before crawling
-- .onion-only filtering (no clearweb leakage)
+- .onion-only filtering
 - CAPTCHA detection using structural HTML analysis
 - Optional robots.txt checking (default: disabled for .onion)
 - Per-domain rate limiting to avoid server overload

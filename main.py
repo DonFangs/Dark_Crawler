@@ -155,11 +155,13 @@ def main() -> None:
         seconds = int(duration.total_seconds() % 60)
         
         try:
-            stats = db.get_domain_stats()
+            session_stats = db.get_crawl_session_stats(session_id)
+            domain_stats = db.get_domain_stats()
             import os
             db_size_mb = os.path.getsize(args.db_path) / (1024 * 1024)
         except Exception:
-            stats = {}
+            session_stats = {}
+            domain_stats = {}
             db_size_mb = 0.0
         
         logger.info(
@@ -170,17 +172,15 @@ def main() -> None:
             "Pages failed: %d\n"
             "Links discovered: %d\n"
             "New domains found: %d\n"
-            "Total domains: %d\n"
             "Database size: %.2f MB\n"
             "==================================",
             session_id,
             minutes,
             seconds,
-            crawler.pages_fetched,
-            0,
-            0,
-            stats.get("total_domains", 0),
-            stats.get("total_domains", 0),
+            session_stats.get("pages_crawled", 0),
+            session_stats.get("pages_failed", 0),
+            session_stats.get("links_discovered", 0),
+            session_stats.get("new_domains_found", 0),
             db_size_mb,
         )
 

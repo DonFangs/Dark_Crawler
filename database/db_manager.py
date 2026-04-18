@@ -224,6 +224,27 @@ class Database:
         ).fetchone()[0]
         return stats
 
+    def get_crawl_session_stats(self, session_id: int) -> Dict[str, int]:
+        """Return crawl session counters for a completed or running session."""
+        cur = self.conn.execute(
+            "SELECT pages_crawled, pages_failed, links_discovered, new_domains_found FROM crawl_sessions WHERE id = ?",
+            (session_id,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return {
+                "pages_crawled": 0,
+                "pages_failed": 0,
+                "links_discovered": 0,
+                "new_domains_found": 0,
+            }
+        return {
+            "pages_crawled": int(row["pages_crawled"] or 0),
+            "pages_failed": int(row["pages_failed"] or 0),
+            "links_discovered": int(row["links_discovered"] or 0),
+            "new_domains_found": int(row["new_domains_found"] or 0),
+        }
+
     def increment_crawl_session_stats(
         self,
         session_id: int,

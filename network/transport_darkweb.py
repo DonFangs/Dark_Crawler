@@ -64,7 +64,7 @@ class DarkWebTransport:
                 "Tor is not running on 127.0.0.1:9050 or traffic is not routing through Tor. Start Tor first."
             ) from exc
 
-    def get(self, url: str, timeout: float):
+    def get(self, url: str, timeout: float) -> Optional[requests.Response]:
         """Fetch a URL through Tor with retry support.
         
         Args:
@@ -72,7 +72,7 @@ class DarkWebTransport:
             timeout: Request timeout in seconds.
             
         Returns:
-            Response object if successful.
+            Response object if successful, or None for skipped non-HTML content.
             
         Raises:
             TransportError: If fetch fails after retries or on client errors.
