@@ -27,9 +27,28 @@ class Safety:
     ]
 
     def is_safe_html(self, html: str) -> bool:
-        """Return True if the HTML is syntactically valid for crawling."""
+        """Return True if the HTML is syntactically valid for crawling.
+        
+        Checks for minimum length, presence of HTML tags, and size limits.
+        """
+        logger = logging.getLogger(__name__)
+        
         if not html or not isinstance(html, str):
+            logger.warning("HTML rejected: empty or not a string")
             return False
+        
+        if len(html) < 50:
+            logger.warning("HTML rejected: too short (minimum 50 characters)")
+            return False
+        
+        if '<' not in html:
+            logger.warning("HTML rejected: no HTML tags found")
+            return False
+        
+        if len(html.encode('utf-8')) > 10 * 1024 * 1024:  # 10MB
+            logger.warning("HTML rejected: exceeds 10MB size limit")
+            return False
+        
         return True
 
     def is_captcha_page(self, html: str) -> bool:

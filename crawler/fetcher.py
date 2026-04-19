@@ -24,9 +24,12 @@ class Fetcher:
         url: str,
     ) -> Tuple[Optional[str], Optional[int], Optional[str], Optional[Response]]:
         """Fetch a URL and return HTML, status code, error, and response."""
-        time.sleep(self.delay_seconds)
+        # Removed time.sleep(self.delay_seconds) to avoid double delay - rate limiting is handled by _apply_domain_rate_limit() in crawler.py
         try:
             response = self.transport.get(url, timeout=self.timeout)
+            if response is None:
+                # Handle non-HTML content (e.g., images, binaries) that transport skips
+                return None, None, 'non-html-content-skipped', None
             return response.text, response.status_code, None, response
         except Exception as exc:
             self.logger.warning("Fetch error for %s: %s", url, exc)

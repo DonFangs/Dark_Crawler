@@ -267,3 +267,25 @@ class Database:
             (url,),
         )
         return cur.fetchone()
+
+    def update_domain_status(self, domain_id: int, status: str) -> None:
+        """Update the last_status column of the domains table.
+        
+        Args:
+            domain_id: Domain ID to update.
+            status: New status ('alive' or 'dead').
+        """
+        self.conn.execute(
+            "UPDATE domains SET last_status = ? WHERE id = ?",
+            (status, domain_id),
+        )
+        self.conn.commit()
+
+    def get_domain_id_for_page(self, page_id: int) -> Optional[int]:
+        """Return the domain_id for a given page_id."""
+        cur = self.conn.execute(
+            "SELECT domain_id FROM pages WHERE id = ?",
+            (page_id,),
+        )
+        row = cur.fetchone()
+        return row["domain_id"] if row else None

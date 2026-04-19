@@ -185,12 +185,18 @@ class Crawler:
                     self.max_depth,
                 )
                 self.db.update_page_status(page_id, status="failed")
+                domain_id = self.db.get_domain_id_for_page(page_id)
+                if domain_id:
+                    self.db.update_domain_status(domain_id, 'dead')
                 self._record_session_stats(pages_failed=1)
                 continue
 
             if not self._is_onion_url(url):
                 self.logger.warning("Scope violation: skipping non-.onion URL %s", url)
                 self.db.update_page_status(page_id, status="failed")
+                domain_id = self.db.get_domain_id_for_page(page_id)
+                if domain_id:
+                    self.db.update_domain_status(domain_id, 'dead')
                 self._record_session_stats(pages_failed=1)
                 continue
 
@@ -198,6 +204,9 @@ class Crawler:
                 if not self.robots_checker.is_allowed(url):
                     self.logger.info("Robots blocked: %s", url)
                     self.db.update_page_status(page_id, status="robots_blocked")
+                    domain_id = self.db.get_domain_id_for_page(page_id)
+                    if domain_id:
+                        self.db.update_domain_status(domain_id, 'dead')
                     self._record_session_stats(pages_failed=1)
                     continue
 
@@ -211,6 +220,9 @@ class Crawler:
                     status="timeout",
                     http_code=status_code,
                 )
+                domain_id = self.db.get_domain_id_for_page(page_id)
+                if domain_id:
+                    self.db.update_domain_status(domain_id, 'dead')
                 self._record_session_stats(pages_failed=1)
                 self.pages_fetched += 1
                 if self.pages_fetched >= self.max_pages:
@@ -228,6 +240,9 @@ class Crawler:
                     http_code=status_code,
                     final_url=response.url if response else None,
                 )
+                domain_id = self.db.get_domain_id_for_page(page_id)
+                if domain_id:
+                    self.db.update_domain_status(domain_id, 'dead')
                 self._record_session_stats(pages_failed=1)
                 self.pages_fetched += 1
                 continue
@@ -240,6 +255,9 @@ class Crawler:
                     http_code=status_code,
                     final_url=response.url if response else None,
                 )
+                domain_id = self.db.get_domain_id_for_page(page_id)
+                if domain_id:
+                    self.db.update_domain_status(domain_id, 'dead')
                 self._record_session_stats(pages_failed=1)
                 self.pages_fetched += 1
                 continue
@@ -262,6 +280,9 @@ class Crawler:
                 title=title,
                 final_url=final_url,
             )
+            domain_id = self.db.get_domain_id_for_page(page_id)
+            if domain_id:
+                self.db.update_domain_status(domain_id, 'alive')
             self.pages_fetched += 1
             self._record_session_stats(pages_crawled=1)
 

@@ -25,7 +25,7 @@ def load_seed_urls(path: str) -> List[str]:
         
     Raises:
         FileNotFoundError: If seed file does not exist.
-        ValueError: If any seed URL is not a .onion address.
+        ValueError: If any seed URL is invalid.
     """
     seeds_path = Path(path)
     if not seeds_path.exists():
@@ -37,11 +37,30 @@ def load_seed_urls(path: str) -> List[str]:
         if line.strip() and not line.strip().startswith("#")
     ]
     
-    for url in urls:
-        if not url.endswith(".onion") and ".onion" not in url:
-            raise ValueError(f"Invalid seed URL (not .onion): {url}")
+    from urllib.parse import urlparse
+    import logging
+    logger = logging.getLogger(__name__)
     
-    return urls
+    valid_urls = []
+    for url in urls:
+        try:
+            parsed = urlparse(url)
+            netloc = parsed.netloc.lower()
+            if not netloc.endswith('.onion'):
+                logger.warning("Seed URL rejected: netloc does not end with .onion: %s", url)
+                continue
+            if parsed.scheme not in ('http', 'https'):
+                logger.warning("Seed URL rejected: invalid scheme (must be http or https): %s", url)
+                continue
+            valid_urls.append(url)
+        except Exception as exc:
+            logger.warning("Seed URL rejected: parsing failed for %s: %s", url, exc)
+            continue
+    
+    if not valid_urls:
+        raise ValueError(f"No valid .onion URLs found in {path}")
+    
+    return valid_urls
 
 
 def parse_args() -> argparse.ArgumentParser:
